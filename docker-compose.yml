@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_USER: govrag_owner
+      POSTGRES_PASSWORD: owner_dev_pw
+      POSTGRES_DB: govrag
+    ports: ["55432:5432"]
+    # Parallel HNSW builds put maintenance_work_mem in /dev/shm. Docker's default is 64 MB.
+    shm_size: 1g
+    command:
+      - postgres
+      # A slow query must not hold a pooled connection forever.
+      - -c
+      - statement_timeout=30s
+      - -c
+      - idle_in_transaction_session_timeout=15s
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - maintenance_work_mem=512MB
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U govrag_owner -d govrag"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # UI
+      - "4318:4318"     # OTLP HTTP
+
+volumes:
+  pgdata:

@@ -1,0 +1,89 @@
+{
+  "rows": 100000,
+  "k": 5,
+  "results": {
+    "big/all/iterative=off": {
+      "rows_returned_mean": 5,
+      "queries_short_of_k": 0,
+      "recall_at_k": 1.0,
+      "p50_ms": 8.33,
+      "p99_ms": 51.29
+    },
+    "big/all/iterative=relaxed_order": {
+      "rows_returned_mean": 5,
+      "queries_short_of_k": 0,
+      "recall_at_k": 0.992,
+      "p50_ms": 9.29,
+      "p99_ms": 50.77
+    },
+    "big/rare/iterative=off": {
+      "rows_returned_mean": 5,
+      "queries_short_of_k": 0,
+      "recall_at_k": 1.0,
+      "p50_ms": 13.39,
+      "p99_ms": 58.78
+    },
+    "big/rare/iterative=relaxed_order": {
+      "rows_returned_mean": 5,
+      "queries_short_of_k": 0,
+      "recall_at_k": 1.0,
+      "p50_ms": 13.04,
+      "p99_ms": 28.41
+    },
+    "mid/all/iterative=off": {
+      "rows_returned_mean": 4.96,
+      "queries_short_of_k": 2,
+      "recall_at_k": 0.964,
+      "p50_ms": 10.65,
+      "p99_ms": 87.97
+    },
+    "mid/all/iterative=relaxed_order": {
+      "rows_returned_mean": 5,
+      "queries_short_of_k": 0,
+      "recall_at_k": 0.984,
+      "p50_ms": 10.53,
+      "p99_ms": 25.79
+    },
+    "small/all/iterative=off": {
+      "rows_returned_mean": 5,
+      "queries_short_of_k": 0,
+      "recall_at_k": 1.0,
+      "p50_ms": 11.72,
+      "p99_ms": 18.77
+    },
+    "small/all/iterative=relaxed_order": {
+      "rows_returned_mean": 5,
+      "queries_short_of_k": 0,
+      "recall_at_k": 1.0,
+      "p50_ms": 13.16,
+      "p99_ms": 23.08
+    },
+    "plan_big_rare": [
+      "CTE Scan on c  (cost=3679.01..3679.11 rows=5 width=24) (actual time=7.923..7.930 rows=5 loops=1)",
+      "  Buffers: shared hit=1047",
+      "  CTE c",
+      "    ->  Limit  (cost=3678.99..3679.01 rows=5 width=24) (actual time=7.920..7.924 rows=5 loops=1)",
+      "          Buffers: shared hit=1047",
+      "          ->  Sort  (cost=3678.99..3679.02 rows=11 width=24) (actual time=7.918..7.920 rows=5 loops=1)",
+      "                Sort Key: ((chunks.embedding <=> '<q>'::vector))",
+      "                Sort Method: top-N heapsort  Memory: 25kB",
+      "                Buffers: shared hit=1047",
+      "                ->  Result  (cost=51.09..3678.81 rows=11 width=24) (actual time=0.938..7.358 rows=946 loops=1)",
+      "                      One-Time Filter: (NULLIF(current_setting('app.tenant'::text, true), ''::text) = 'big'::text)",
+      "                      Buffers: shared hit=1047",
+      "                      ->  Bitmap Heap Scan on chunks  (cost=51.09..3678.78 rows=11 width=1560) (actual time=0.929..6.128 rows=946 loops=1)",
+      "                            Recheck Cond: (allowed_roles && (NULLIF(current_setting('app.roles'::text, true), ''::text))::text[])",
+      "                            Filter: ((tenant_id = 'big'::text) AND (allowed_roles && '{rare}'::text[]))",
+      "                            Rows Removed by Filter: 109",
+      "                            Heap Blocks: exact=1044",
+      "                            Buffers: shared hit=1047",
+      "                            ->  Bitmap Index Scan on chunks_roles_gin  (cost=0.00..51.08 rows=1087 width=0) (actual time=0.555..0.556 rows=1055 loops=1)",
+      "                                  Index Cond: (allowed_roles && (NULLIF(current_setting('app.roles'::text, true), ''::text))::text[])",
+      "                                  Buffers: shared hit=3",
+      "Planning:",
+      "  Buffers: shared hit=2",
+      "Planning Time: 0.405 ms",
+      "Execution Time: 7.984 ms"
+    ]
+  }
+}
