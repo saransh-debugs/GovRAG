@@ -2,26 +2,35 @@
 
 from __future__ import annotations
 
+import uuid
+
 import asyncpg
 import pytest
 
 from govrag.db import Pools, roles_literal, scoped
 from tests.conftest import insert_doc
 
+SEEDED: list[uuid.UUID] = []
+
 
 @pytest.fixture(scope="module")
-async def seeded(owner: asyncpg.Connection) -> dict[str, object]:
+async def seeded(owner: asyncpg.Connection) -> list[uuid.UUID]:
+    # Other test modules add chunks too, so every count below is limited to these IDs.
     _, acme = await insert_doc(
         owner, "acme", ["hr", "intern"],
         [("acme hr only", ["hr"]), ("acme everyone", ["hr", "intern"])],
     )
     _, globex = await insert_doc(owner, "globex", ["hr"], [("globex hr", ["hr"])])
-    return {"acme": acme, "globex": globex}
+    SEEDED[:] = [*acme, *globex]
+    return SEEDED
 
 
 async def _count(pools: Pools, tenant: str, roles: list[str], where: str = "true") -> int:
     async with scoped(pools.app, tenant, roles, acquire_timeout_s=1) as c:
-        n: int = await c.fetchval(f"SELECT count(*) FROM core.chunks WHERE {where}")  # noqa: S608
+        n: int = await c.fetchval(
+            f"SELECT count(*) FROM core.chunks WHERE id = ANY($1) AND {where}",  # noqa: S608
+            SEEDED,
+        )
         return n
 
 
@@ -53,7 +62,7 @@ async def test_context_does_not_leak_to_next_borrower(pools: Pools, seeded: obje
     # Force reuse: drain the pool to one connection's worth by holding the others.
     async with scoped(pools.app, "acme", ["hr"], acquire_timeout_s=1) as c:
         pid = await c.fetchval("SELECT pg_backend_pid()")
-        assert await c.fetchval("SELECT count(*) FROM core.chunks") == 2
+        assert await c.fetchval("SELECT count(*) FROM core.chunks WHERE id = ANY($1)", SEEDED) == 2
     held = []
     try:
         while True:
