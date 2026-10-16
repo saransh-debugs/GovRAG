@@ -33,6 +33,12 @@ class NotFound(GovRagError):
     status, code = 404, "not_found"
 
 
+class Conflict(GovRagError):
+    """Optimistic concurrency: someone else changed it first. Re-read and retry."""
+
+    status, code = 409, "conflict"
+
+
 class Overloaded(GovRagError):
     """Load shedding. The client should retry after retry_after_s."""
 

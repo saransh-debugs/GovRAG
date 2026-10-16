@@ -15,6 +15,7 @@ from govrag.auth import JwtVerifier, mint
 from govrag.config import Settings
 from govrag.db import Pools
 from govrag.keys import MasterKey, TenantKeyring, provision_tenant
+from govrag.pii.analyzer import PiiAnalyzer
 
 TEST_DB = "govrag_test"
 TENANTS = ("acme", "globex")
@@ -56,6 +57,15 @@ async def pools(settings: Settings, owner: asyncpg.Connection) -> AsyncIterator[
     p = await Pools.create(settings)
     yield p
     await p.close()
+
+
+@pytest.fixture(scope="session")
+async def analyzer(settings: Settings) -> AsyncIterator[PiiAnalyzer]:
+    """Real Presidio, 1 worker per lane (~1.4 GB RSS total). Loaded once per session."""
+    a = PiiAnalyzer(model=settings.spacy_model, ingest_workers=1, query_workers=1)
+    await a.start()
+    yield a
+    a.close()
 
 
 @pytest.fixture(scope="session")

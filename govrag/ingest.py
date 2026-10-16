@@ -122,15 +122,19 @@ class Ingestor:
         doc: DocumentIn,
         *,
         extra_redact: frozenset[str] = frozenset(),
+        redaction_rev: int = 0,
         request_id: uuid.UUID | None = None,
     ) -> IngestResult:
+        """redaction_rev: the policy version whose extra_redact list was applied. The
+        re-scan job skips chunks already at (or past) the version it's applying."""
         if not p.has(INGEST_ROLE):
             raise Forbidden("ingest_role_required")
         section_roles = validate(doc, self._s)
         if self._slots.locked():
             raise Overloaded("ingest_busy", retry_after_s=5.0)
         async with self._slots:
-            return await self._ingest(p, doc, section_roles, extra_redact, request_id)
+            return await self._ingest(p, doc, section_roles, extra_redact, redaction_rev,
+                                      request_id)
 
     async def _ingest(
         self,
@@ -138,6 +142,7 @@ class Ingestor:
         doc: DocumentIn,
         section_roles: list[tuple[str, ...]],
         extra_redact: frozenset[str],
+        redaction_rev: int,
         request_id: uuid.UUID | None,
     ) -> IngestResult:
         tenant = p.tenant_id
@@ -192,10 +197,11 @@ class Ingestor:
                     # one round trip, which is the next best thing.
                     await c.executemany(
                         "INSERT INTO core.chunks (tenant_id, id, document_id, ord, text_redacted,"
-                        " embedding, allowed_roles, pii_types)"
-                        " VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        " embedding, allowed_roles, pii_types, redaction_rev)"
+                        " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                         [
-                            (tenant, cid, doc_id, ord_, text, vec, list(roles), types)
+                            (tenant, cid, doc_id, ord_, text, vec, list(roles), types,
+                             redaction_rev)
                             for (cid, ord_, text, roles), vec, types in zip(
                                 rows, vectors, chunk_types, strict=True
                             )

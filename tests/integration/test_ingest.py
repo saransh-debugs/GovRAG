@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from collections.abc import AsyncIterator
 
 import asyncpg
 import pytest
@@ -38,14 +37,6 @@ HR_TEXT = (
     f"Approved by {PII['names'][1]}; call {PII['phone']} with questions."
 )
 PUBLIC_TEXT = f"The offsite is in March. {PII['names'][1]} is organizing it."
-
-
-@pytest.fixture(scope="session")
-async def analyzer(settings: Settings) -> AsyncIterator[PiiAnalyzer]:
-    a = PiiAnalyzer(model=settings.spacy_model, ingest_workers=1, query_workers=1)
-    await a.start()
-    yield a
-    a.close()
 
 
 def _ingestor(pools: Pools, keyring: TenantKeyring, analyzer: PiiAnalyzer, settings: Settings,
