@@ -71,6 +71,13 @@ class TenantKeyring:
         self._hmac.pop(tenant_id, None)
         self._enc.pop(tenant_id, None)
 
+    def cached_hmac(self, tenant_id: str) -> bytes | None:
+        """The hot path: no DB connection needed while the key is cached."""
+        hit = self._hmac.get(tenant_id)
+        if hit and time.monotonic() - hit[0] < self._ttl:
+            return hit[1]
+        return None
+
     async def hmac_key(self, conn: asyncpg.Connection, tenant_id: str) -> bytes:
         """conn must be scoped() to tenant_id (RLS shows only that tenant's row)."""
         hit = self._hmac.get(tenant_id)

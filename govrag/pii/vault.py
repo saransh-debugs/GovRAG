@@ -133,6 +133,45 @@ async def load(
     return out
 
 
+async def load_for_chunks(
+    conn: asyncpg.Connection,
+    tenant_id: str,
+    chunk_ids: Sequence[uuid.UUID],
+    types: Iterable[str],
+    keys: EncKeys,
+) -> dict[str, Revealed]:
+    """Decrypt the tokens ingest recorded for these chunks, limited to `types`.
+
+    This is the rehydration allowlist. Two things it refuses on purpose:
+      - a token that only *appears* in chunk text (forged by a document author, or
+        invented by the LLM) has no ref, so it is never decrypted;
+      - types the asker may not see are filtered in SQL, so their ciphertext never even
+        leaves the DB for this request.
+    conn: vault login, scoped to tenant_id.
+    """
+    allowed = sorted(set(types))
+    if not chunk_ids or not allowed:
+        return {}
+    rows = await conn.fetch(
+        "SELECT DISTINCT t.token, t.entity_type, t.ciphertext"
+        "  FROM vault.token_refs r"
+        "  JOIN vault.pii_tokens t ON t.tenant_id = r.tenant_id AND t.token = r.token"
+        " WHERE r.tenant_id = $1 AND r.chunk_id = ANY($2) AND t.entity_type = ANY($3)",
+        tenant_id,
+        list(chunk_ids),
+        allowed,
+    )
+    out: dict[str, Revealed] = {}
+    for r in rows:
+        try:
+            out[r["token"]] = Revealed(
+                r["entity_type"], keys.fernet.decrypt(bytes(r["ciphertext"])).decode()
+            )
+        except InvalidToken:
+            continue  # shredded or rotated-away key: keep the placeholder
+    return out
+
+
 async def delete_document(conn: asyncpg.Connection, tenant_id: str, document_id: uuid.UUID) -> int:
     """Delete a document, its chunks, refs, and any token no other chunk still uses.
 

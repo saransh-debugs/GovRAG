@@ -16,7 +16,7 @@ import asyncpg
 
 Action = Literal[
     "retrieve", "rehydrate", "ingest", "delete", "denied",
-    "policy_change", "policy_rollback", "rescan", "shred",
+    "policy_change", "policy_rollback", "rescan", "shred", "dry_run",
 ]
 Outcome = Literal["ok", "denied", "error"]
 

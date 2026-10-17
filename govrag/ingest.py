@@ -31,7 +31,7 @@ from govrag.keys import MasterKey, TenantKeyring
 from govrag.pii import vault
 from govrag.pii.analyzer import PiiAnalyzer
 from govrag.pii.entities import DEFAULT_REDACT
-from govrag.pii.tokens import entity_type_of, find_tokens
+from govrag.pii.tokens import entity_type_of, find_tokens, neutralize
 
 INGEST_ROLE = "ingest"
 # Crypto-shredding is irreversible, so it needs its own role, not just "ingest".
@@ -152,7 +152,10 @@ class Ingestor:
             hmac_key = await self._keyring.hmac_key(c, tenant)
             enc = await self._keyring.enc_keys(c, tenant)
 
-        texts = [doc.title, *(s.text for s in doc.sections)]
+        # Break up token-shaped strings in the input, so a document can't carry a forged
+        # "[US_SSN_<someone else's token>]". The vault refs check (load_for_chunks) is the
+        # real guard; this is the second check.
+        texts = [neutralize(doc.title), *(neutralize(s.text) for s in doc.sections)]
         spans = await self._analyzer.analyze(texts, DEFAULT_REDACT | extra_redact, lane="ingest")
         # Propagate + redact + chunk in a worker process, not a thread: see ingest_cpu.py.
         prep = await self._analyzer.run(
