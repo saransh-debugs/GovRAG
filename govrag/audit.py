@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 import asyncpg
+from opentelemetry import trace
 
 Action = Literal[
     "retrieve", "rehydrate", "ingest", "delete", "denied",
@@ -43,6 +44,9 @@ def _ids(xs: Iterable[uuid.UUID]) -> list[uuid.UUID]:
 
 
 async def record(conn: asyncpg.Connection, ev: AuditEvent) -> None:
+    # Mirror the event onto the current span for debugging. Same fields, no text.
+    span = trace.get_current_span()
+    span.set_attribute("govrag.audit.action", ev.action)
     await conn.execute(
         """
         INSERT INTO audit.events (tenant_id, request_id, user_id, action, outcome,

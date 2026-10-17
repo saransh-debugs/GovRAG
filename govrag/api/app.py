@@ -13,6 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from govrag import tracing
 from govrag.auth import JwtVerifier, Principal
 from govrag.chunking import Chunker
 from govrag.config import Settings, get_settings
@@ -66,6 +67,9 @@ async def build_services(
     background: bool = True,
 ) -> Services:
     closers: list[Callable[[], Awaitable[None] | None]] = []
+    provider = tracing.setup(s.otlp_endpoint)
+    if provider is not None:
+        closers.append(provider.shutdown)  # flushes queued spans on exit
     pools = await Pools.create(s)
     closers.append(pools.close)
     master = MasterKey(s.master_keys.get_secret_value())

@@ -8,6 +8,10 @@ import asyncpg
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pgvector.asyncpg import register_vector
 
 from govrag import migrate
@@ -16,10 +20,23 @@ from govrag.config import Settings
 from govrag.db import Pools
 from govrag.keys import MasterKey, TenantKeyring, provision_tenant
 from govrag.pii.analyzer import PiiAnalyzer
+from govrag.tracing import AllowlistExporter
 
 TEST_DB = "govrag_test"
 TENANTS = ("acme", "globex")
 ISS, AUD = "https://idp.test", "govrag-test"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def spans() -> InMemorySpanExporter:
+    """Every span from the whole test session, as the real exporter would ship it
+    (i.e. after the allowlist scrub). Installed first, so tracing.setup() never
+    points tests at a real collector."""
+    mem = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(AllowlistExporter(mem)))
+    trace.set_tracer_provider(provider)
+    return mem
 
 
 @pytest.fixture(scope="session")
@@ -27,6 +44,7 @@ def settings() -> Settings:
     s = Settings()  # type: ignore[call-arg]  # secrets from .env
     s.db_name = TEST_DB
     s.db_acquire_timeout_s = 0.5
+    s.otlp_endpoint = ""
     return s
 
 

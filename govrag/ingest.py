@@ -32,6 +32,7 @@ from govrag.pii import vault
 from govrag.pii.analyzer import PiiAnalyzer
 from govrag.pii.entities import DEFAULT_REDACT
 from govrag.pii.tokens import entity_type_of, find_tokens, neutralize
+from govrag.tracing import annotate, step, tracer
 
 INGEST_ROLE = "ingest"
 # Crypto-shredding is irreversible, so it needs its own role, not just "ingest".
@@ -133,8 +134,14 @@ class Ingestor:
         if self._slots.locked():
             raise Overloaded("ingest_busy", retry_after_s=5.0)
         async with self._slots:
-            return await self._ingest(p, doc, section_roles, extra_redact, redaction_rev,
-                                      request_id)
+            with tracer.start_as_current_span("ingest", attributes={
+                "govrag.tenant_id": p.tenant_id, "govrag.user_id": p.user_id,
+            }) as sp:
+                res = await self._ingest(p, doc, section_roles, extra_redact, redaction_rev,
+                                         request_id)
+                annotate(sp, document_ids=[res.document_id], chunks=len(res.chunk_ids),
+                         pii_types=set(res.pii_counts), new_tokens=res.new_tokens)
+                return res
 
     async def _ingest(
         self,
@@ -156,12 +163,15 @@ class Ingestor:
         # "[US_SSN_<someone else's token>]". The vault refs check (load_for_chunks) is the
         # real guard; this is the second check.
         texts = [neutralize(doc.title), *(neutralize(s.text) for s in doc.sections)]
-        spans = await self._analyzer.analyze(texts, DEFAULT_REDACT | extra_redact, lane="ingest")
+        with step("pii.analyze", lane="ingest"):
+            spans = await self._analyzer.analyze(texts, DEFAULT_REDACT | extra_redact,
+                                                 lane="ingest")
         # Propagate + redact + chunk in a worker process, not a thread: see ingest_cpu.py.
-        prep = await self._analyzer.run(
-            "ingest", prepare_document, texts, spans, hmac_key,
-            self._chunker.chunk_size, self._chunker.chunk_overlap, timeout_s=120.0,
-        )
+        with step("redact_and_chunk"):
+            prep = await self._analyzer.run(
+                "ingest", prepare_document, texts, spans, hmac_key,
+                self._chunker.chunk_size, self._chunker.chunk_overlap, timeout_s=120.0,
+            )
         found = prep.found
         pieces = prep.chunks
         rows: list[tuple[uuid.UUID, int, str, tuple[str, ...]]] = []
@@ -170,7 +180,8 @@ class Ingestor:
                 rows.append((uuid.uuid4(), len(rows), text, section_roles[sec_i]))
         if not rows:
             raise BadRequest("empty_document")
-        vectors = await self._embedder.embed_passages([r[2] for r in rows])
+        with step("embed", chunks=len(rows)):
+            vectors = await self._embedder.embed_passages([r[2] for r in rows])
 
         refs: list[tuple[str, uuid.UUID]] = []
         chunk_types: list[list[str]] = []
