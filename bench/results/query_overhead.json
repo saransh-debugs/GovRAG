@@ -1,0 +1,108 @@
+{
+  "hardware": "Intel i7-9750H (6c/12t), 16 GB, macOS; Postgres 17 + pgvector 0.8.1 in Docker; fake LLM (zero latency); 1 Presidio query worker",
+  "ingest_1_workers": {
+    "docs": 60,
+    "chunks": 186,
+    "seconds": 7.9,
+    "chunks_per_s": 23.7,
+    "stage_seconds_summed": {
+      "pii.analyze": 3.3,
+      "redact_and_chunk": 1.1,
+      "embed": 9.7,
+      "ingest": 15.5
+    }
+  },
+  "ingest_2_workers": {
+    "docs": 60,
+    "chunks": 180,
+    "seconds": 8.5,
+    "chunks_per_s": 21.3,
+    "stage_seconds_summed": {
+      "pii.analyze": 3.1,
+      "redact_and_chunk": 0.6,
+      "embed": 11.1,
+      "ingest": 16.8
+    }
+  },
+  "query_concurrency_1": {
+    "requests": 120,
+    "shed": 0,
+    "qps": 26.2,
+    "p50_ms": 37.3,
+    "p99_ms": 53.0,
+    "stages_p50_ms": {
+      "policy": 0.0,
+      "redact_question": 7.6,
+      "embed": 7.3,
+      "retrieve": 6.3,
+      "audit.retrieve": 4.8,
+      "llm.first_token": 0.1,
+      "vault.wait": 4.8,
+      "audit.rehydrate": 4.4
+    },
+    "stages_p99_ms": {
+      "policy": 0.1,
+      "redact_question": 10.1,
+      "embed": 10.2,
+      "retrieve": 10.4,
+      "audit.retrieve": 7.7,
+      "llm.first_token": 0.2,
+      "vault.wait": 8.1,
+      "audit.rehydrate": 6.3
+    }
+  },
+  "query_concurrency_8": {
+    "requests": 240,
+    "shed": 0,
+    "qps": 76.5,
+    "p50_ms": 88.6,
+    "p99_ms": 271.2,
+    "stages_p50_ms": {
+      "policy": 0.0,
+      "redact_question": 17.8,
+      "embed": 11.2,
+      "retrieve": 14.5,
+      "audit.retrieve": 12.9,
+      "llm.first_token": 0.1,
+      "vault.wait": 14.4,
+      "audit.rehydrate": 12.9
+    },
+    "stages_p99_ms": {
+      "policy": 0.1,
+      "redact_question": 178.5,
+      "embed": 24.8,
+      "retrieve": 108.8,
+      "audit.retrieve": 50.8,
+      "llm.first_token": 0.3,
+      "vault.wait": 92.7,
+      "audit.rehydrate": 86.2
+    }
+  },
+  "query_concurrency_32": {
+    "requests": 320,
+    "shed": 67,
+    "qps": 76.6,
+    "p50_ms": 380.4,
+    "p99_ms": 707.8,
+    "stages_p50_ms": {
+      "policy": 0.0,
+      "redact_question": 85.3,
+      "embed": 20.5,
+      "retrieve": 56.9,
+      "audit.retrieve": 54.3,
+      "llm.first_token": 0.1,
+      "vault.wait": 61.4,
+      "audit.rehydrate": 54.6
+    },
+    "stages_p99_ms": {
+      "policy": 0.1,
+      "redact_question": 198.3,
+      "embed": 78.7,
+      "retrieve": 242.6,
+      "audit.retrieve": 300.8,
+      "llm.first_token": 0.4,
+      "vault.wait": 146.4,
+      "audit.rehydrate": 180.7
+    }
+  }
+}
