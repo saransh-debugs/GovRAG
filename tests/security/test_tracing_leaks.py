@@ -68,7 +68,7 @@ async def test_no_text_in_spans_or_logs_end_to_end(
             await world.svc.query.answer(world.who("hr"), QUESTIONS[0])
     finally:
         await owner.execute("GRANT INSERT ON audit.events TO govrag_app")
-    world.box.models["claude-haiku-5.5"].fail = "midstream"
+    world.box.models["gemini-2.5-flash-lite"].fail = "midstream"
     try:
         with pytest.raises(Unavailable):
             await world.svc.query.answer(world.who("hr"), "compensation review raise")

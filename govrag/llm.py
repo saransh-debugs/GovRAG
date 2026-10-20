@@ -6,10 +6,10 @@ The LLM is treated as an untrusted, unreliable vendor:
   - fallback to the next model happens only *before the first token*. Once text has been
     streamed to the user, switching models would produce a spliced answer.
 
-Why the official SDKs and not LlamaIndex's LLM wrappers: we need direct control of
-timeouts, retries and stream cancellation for backpressure. SDK retries are turned off
-(max_retries=0): our own fallback already handles failure, and SDK retries on top would
-multiply latency past the request deadline. LlamaIndex still does chunking and retrieval.
+Why the google-genai SDK and not LlamaIndex's LLM wrapper: we need direct control of
+timeouts and stream cancellation for backpressure. Our own fallback handles failure, so
+we don't stack SDK retries on top (they would multiply latency past the request
+deadline). LlamaIndex still does chunking and retrieval.
 """
 
 from __future__ import annotations
@@ -70,50 +70,6 @@ class FakeLLM:
             await asyncio.sleep(0)
 
 
-# --- Vertex: Claude -------------------------------------------------------------------------
-
-class ClaudeVertex:
-    def __init__(
-        self, name: str, model_id: str, *, project: str, region: str, timeout_s: float
-    ) -> None:
-        from anthropic import AsyncAnthropicVertex
-
-        self.name = name
-        self._model = model_id
-        # open_telemetry stays off (the default): SDK auto-tracing could record prompt
-        # text, and prompts contain document text. Our own spans carry IDs only.
-        self._client = AsyncAnthropicVertex(
-            project_id=project, region=region, timeout=timeout_s, max_retries=0
-        )
-
-    async def stream(self, *, system: str, user: str, max_tokens: int) -> AsyncIterator[str]:
-        import anthropic
-
-        try:
-            # `async with` matters: if the client disconnects, our generator is closed,
-            # this context exits, the HTTP stream closes, and Vertex stops generating
-            # (and billing) instead of finishing an answer nobody will read.
-            async with self._client.messages.stream(
-                model=self._model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-            ) as s:
-                async for text in s.text_stream:
-                    yield text
-                final = await s.get_final_message()
-            if final.stop_reason == "refusal":
-                raise LlmError("refusal")
-        except anthropic.APITimeoutError as e:
-            raise LlmError("timeout") from e
-        except anthropic.APIConnectionError as e:
-            raise LlmError("connection") from e
-        except anthropic.RateLimitError as e:
-            raise LlmError("rate_limited") from e
-        except anthropic.APIStatusError as e:
-            raise LlmError(f"http_{e.status_code}") from e
-
-
 # --- Vertex: Gemini -------------------------------------------------------------------------
 
 class GeminiVertex:
@@ -141,7 +97,12 @@ class GeminiVertex:
                 model=self._model,
                 contents=user,
                 config=self._types.GenerateContentConfig(
-                    system_instruction=system, max_output_tokens=max_tokens
+                    system_instruction=system,
+                    max_output_tokens=max_tokens,
+                    # Answering from given documents doesn't need reasoning tokens. On 2.5
+                    # Flash they're on by default and bill as output, and they delay the
+                    # first visible token.
+                    thinking_config=self._types.ThinkingConfig(thinking_budget=0),
                 ),
             )
             async for chunk in it:
@@ -321,16 +282,12 @@ async def _close(gen: Any) -> None:
 
 
 def vertex_factory(
-    *, project: str, timeout_s: float, model_ids: dict[str, str],
-    claude_regions: dict[str, str], gemini_locations: dict[str, str],
+    *, project: str, timeout_s: float, model_ids: dict[str, str], locations: dict[str, str],
 ) -> ModelFactory:
     def make(name: str, region: str) -> ChatModel:
-        if name.startswith("claude"):
-            return ClaudeVertex(name, model_ids[name], project=project,
-                                region=claude_regions[region], timeout_s=timeout_s)
-        if name.startswith("gemini"):
-            return GeminiVertex(name, model_ids[name], project=project,
-                                location=gemini_locations[region], timeout_s=timeout_s)
-        raise ValueError(f"no backend for model {name!r}")
+        if name not in model_ids:
+            raise ValueError(f"no backend for model {name!r}")
+        return GeminiVertex(name, model_ids[name], project=project,
+                            location=locations[region], timeout_s=timeout_s)
 
     return make

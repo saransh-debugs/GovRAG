@@ -82,18 +82,15 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 20.0  # SDK HTTP timeout
     llm_first_token_timeout_s: float = 8.0  # then try the backup model
     llm_stall_timeout_s: float = 15.0  # no new token for this long mid-answer = give up
-    # Policy model names -> Vertex model IDs. Haiku 5.5 is newer than the SDK docs in this
-    # repo's tooling, so its ID is config, verified against Vertex before first real use.
+    # Policy model names -> Vertex model IDs.
     vertex_model_ids: dict[str, str] = Field(default_factory=lambda: {
-        "claude-haiku-5.5": "claude-haiku-5-5",
         "gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
+        "gemini-2.5-flash": "gemini-2.5-flash",
     })
     # Policy region -> Vertex location. Data residency: an "eu" tenant never hits a US
-    # endpoint.
-    vertex_claude_regions: dict[str, str] = Field(default_factory=lambda: {
-        "us": "us", "eu": "eu",
-    })
-    vertex_gemini_locations: dict[str, str] = Field(default_factory=lambda: {
+    # endpoint. Models only served from "global" (e.g. gemini-3.1-flash-lite) are left out
+    # on purpose: global can route anywhere.
+    vertex_locations: dict[str, str] = Field(default_factory=lambda: {
         "us": "us-central1", "eu": "europe-west4",
     })
     llm_concurrency: int = 16

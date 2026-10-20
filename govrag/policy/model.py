@@ -11,7 +11,7 @@ from govrag.pii.entities import KNOWN, OPTIONAL_REDACT
 
 # Models the server knows how to call. A tenant picks from this list; it can't name an
 # arbitrary endpoint, so a policy edit can't route a tenant's data to a new vendor.
-SERVER_MODELS: frozenset[str] = frozenset({"claude-haiku-5.5", "gemini-2.5-flash-lite", "fake"})
+SERVER_MODELS: frozenset[str] = frozenset({"gemini-2.5-flash-lite", "gemini-2.5-flash", "fake"})
 
 
 def _role(v: str) -> str:
@@ -34,7 +34,7 @@ class LlmPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     # First = main, the rest = backups, tried in order.
-    models: tuple[str, ...] = ("claude-haiku-5.5", "gemini-2.5-flash-lite")
+    models: tuple[str, ...] = ("gemini-2.5-flash-lite", "gemini-2.5-flash")
     region: Literal["us", "eu"] = "us"
 
     @field_validator("models")

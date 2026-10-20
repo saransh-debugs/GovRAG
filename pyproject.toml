@@ -33,7 +33,6 @@ govrag = "govrag.api.app:main"
 
 [project.optional-dependencies]
 vertex = [
-    "anthropic[vertex]>=0.40",
     "google-genai>=1.0",
 ]
 test = [

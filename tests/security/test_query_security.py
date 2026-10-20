@@ -50,7 +50,7 @@ class FakeBox:
     """Router caches model clients, so tests swap behavior through this indirection."""
 
     def __init__(self) -> None:
-        self.models = {n: FakeLLM(name=n) for n in ("claude-haiku-5.5", "gemini-2.5-flash-lite")}
+        self.models = {n: FakeLLM(name=n) for n in ("gemini-2.5-flash-lite", "gemini-2.5-flash")}
 
     def factory(self, name: str, _region: str) -> ChatModel:
         box = self
@@ -206,11 +206,11 @@ async def test_question_pii_is_policy_aware(world: World) -> None:
     assert key is not None
     doc_token = token_for(key, "PERSON", PII["daniel"])[0]
     q = f"What is {PII['daniel']} organizing?"
-    world.box.models["claude-haiku-5.5"].prompts.clear()
+    world.box.models["gemini-2.5-flash-lite"].prompts.clear()
     hr_ans = await world.svc.query.answer(world.who("hr"), q)
-    hr_q = world.box.models["claude-haiku-5.5"].prompts[-1][1].rsplit("Question:", 1)[1]
+    hr_q = world.box.models["gemini-2.5-flash-lite"].prompts[-1][1].rsplit("Question:", 1)[1]
     intern_ans = await world.svc.query.answer(world.who("intern"), q)
-    intern_q = world.box.models["claude-haiku-5.5"].prompts[-1][1].rsplit("Question:", 1)[1]
+    intern_q = world.box.models["gemini-2.5-flash-lite"].prompts[-1][1].rsplit("Question:", 1)[1]
     assert doc_token in hr_q            # matches the chunks
     assert doc_token not in intern_q    # random token: can't confirm a guessed name
     assert PII["daniel"] not in hr_q + intern_q
@@ -254,20 +254,20 @@ async def test_audit_down_fails_closed(world: World, owner: asyncpg.Connection) 
 
 async def test_llm_fallback_and_total_outage(world: World) -> None:
     try:
-        world.box.models["claude-haiku-5.5"].fail = "error"
-        ans = await world.svc.query.answer(world.who("hr"), "offsite")
-        assert ans.meta.model == "gemini-2.5-flash-lite"
         world.box.models["gemini-2.5-flash-lite"].fail = "error"
+        ans = await world.svc.query.answer(world.who("hr"), "offsite")
+        assert ans.meta.model == "gemini-2.5-flash"
+        world.box.models["gemini-2.5-flash"].fail = "error"
         with pytest.raises(Unavailable):
             await world.svc.query.answer(world.who("hr"), "offsite")
     finally:
         world.box.reset()
     assert (await world.svc.query.answer(world.who("hr"), "offsite")).meta.model == \
-        "claude-haiku-5.5"
+        "gemini-2.5-flash-lite"
 
 
 async def test_one_tenant_flooding_does_not_block_another(world: World) -> None:
-    world.box.models["claude-haiku-5.5"].first_token_delay_s = 0.5
+    world.box.models["gemini-2.5-flash-lite"].first_token_delay_s = 0.5
     try:
         flood = [asyncio.create_task(world.svc.query.answer(world.who("hr"), "offsite"))
                  for _ in range(12)]

@@ -92,8 +92,7 @@ async def build_services(
         else:
             llm_factory = vertex_factory(
                 project=s.vertex_project, timeout_s=s.llm_timeout_s,
-                model_ids=s.vertex_model_ids, claude_regions=s.vertex_claude_regions,
-                gemini_locations=s.vertex_gemini_locations,
+                model_ids=s.vertex_model_ids, locations=s.vertex_locations,
             )
     router = LlmRouter(
         llm_factory, concurrency=s.llm_concurrency,
