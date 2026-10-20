@@ -30,6 +30,7 @@ from typing import Any, Literal, TypeVar
 
 from govrag.errors import Overloaded, Unavailable
 from govrag.pii.entities import DEFAULT_MIN_SCORE, MIN_SCORE
+from govrag.pii.fields import field_spans
 
 Span = tuple[int, int, str, float]  # start, end, entity_type, score
 Lane = Literal["ingest", "query"]
@@ -118,6 +119,8 @@ def _analyze_batch(texts: list[str], entities: list[str]) -> list[list[Span]]:
             for r in res
             if r.score >= MIN_SCORE.get(r.entity_type, DEFAULT_MIN_SCORE) and r.end > r.start
         ]
+        # Labeled fields (JSON/YAML/HTML/forms): see pii/fields.py for why.
+        spans += field_spans(t, entities)
         out.append(resolve_overlaps(spans))
     return out
 
@@ -247,9 +250,17 @@ class PiiAnalyzer:
                 size = 0
             batches[-1].append(i)
             size += len(t)
-        results = await asyncio.gather(
-            *(self._submit(pool, [texts[i] for i in b], ents, timeout_s) for b in batches if b)
-        )
+        # One call fans out to at most 2 batches per worker at a time. Without this cap a
+        # single large document (500K chars = ~25 batches) overflowed the lane's pending
+        # limit by itself and got shed on an idle server. The pending limit is for
+        # shedding *other* callers, not for splitting one request.
+        fan_out = asyncio.Semaphore(max(1, pool.workers * 2))
+
+        async def one(b: list[int]) -> list[list[Span]]:
+            async with fan_out:
+                return await self._submit(pool, [texts[i] for i in b], ents, timeout_s)
+
+        results = await asyncio.gather(*(one(b) for b in batches if b))
         out: list[list[Span]] = [[] for _ in texts]
         for b, res in zip((b for b in batches if b), results, strict=True):
             for i, spans in zip(b, res, strict=True):

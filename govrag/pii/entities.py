@@ -19,6 +19,16 @@ DEFAULT_REDACT: frozenset[str] = frozenset(
         "US_DRIVER_LICENSE",
         "US_ITIN",
         "MEDICAL_LICENSE",
+        # Found by labeled-field detection (pii/fields.py). Added after a public dataset
+        # showed these going through raw: passwords and usernames are secrets, and the
+        # rest are identifiers under GDPR/HIPAA.
+        "PASSPORT",
+        "DRIVER_LICENSE",
+        "NATIONAL_ID",
+        "USERNAME",
+        "CREDENTIAL",
+        "STREET_ADDRESS",
+        "DATE_OF_BIRTH",
     }
 )
 
