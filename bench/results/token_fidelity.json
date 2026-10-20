@@ -1,0 +1,30 @@
+{
+  "docs": 100,
+  "region": "us",
+  "results": {
+    "gemini-2.5-flash-lite": {
+      "exact": 259,
+      "bare": 0,
+      "invented": 2,
+      "mangled": 0,
+      "errors": 1,
+      "calls": 100,
+      "answers_naming_a_person": 97,
+      "usable_rate": 0.9923,
+      "first_token_p50_s": 0.39,
+      "total_p95_s": 3.15
+    },
+    "gemini-2.5-flash": {
+      "exact": 245,
+      "bare": 0,
+      "invented": 0,
+      "mangled": 0,
+      "errors": 0,
+      "calls": 100,
+      "answers_naming_a_person": 100,
+      "usable_rate": 1.0,
+      "first_token_p50_s": 0.5,
+      "total_p95_s": 2.77
+    }
+  }
+}
