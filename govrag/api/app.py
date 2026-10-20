@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -18,7 +19,7 @@ from govrag.auth import JwtVerifier, Principal
 from govrag.chunking import Chunker
 from govrag.config import Settings, get_settings
 from govrag.db import Pools
-from govrag.embed import Embedder, ProcessEmbedder
+from govrag.embed import Embedder, FastEmbedder
 from govrag.errors import GovRagError, Unauthorized
 from govrag.ingest import Ingestor
 from govrag.keys import MasterKey, TenantKeyring
@@ -80,10 +81,10 @@ async def build_services(
         await analyzer.start()
         closers.append(analyzer.close)
     if embedder is None:
-        pe = ProcessEmbedder(s.embed_model, dim=s.embed_dim)
-        await pe.start()
-        closers.append(pe.close)
-        embedder = pe
+        # Model load is ~6 s of blocking work; keep it off the loop even at startup.
+        embedder = await asyncio.to_thread(
+            FastEmbedder, s.embed_model, dim=s.embed_dim, concurrency=s.embed_concurrency
+        )
     if llm_factory is None:
         if s.llm_backend == "fake":
             fake = FakeLLM()

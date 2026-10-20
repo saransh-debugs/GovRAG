@@ -1,24 +1,24 @@
 """Text -> vectors. Runs locally (ONNX), so even redacted text never leaves the box here.
 
-Why a separate process and not a thread: measured on this repo's ingest test, fastembed in
-a thread still froze the event loop for 40-90 ms per batch at every batch size (4 to 64).
-ONNX releases the GIL during inference, but tokenizing and post-processing around it don't.
-In its own process the model has its own GIL, and the loop only waits on a future.
-Cost: one extra process (~250 MB RSS) and ~1 ms of pickling per call.
+A thread, not the event loop: one batch is 20 ms to 12 s of CPU. ONNX Runtime releases the
+GIL while it runs, so a thread keeps the loop free. Measured (bench/loop_lag.py): during a
+12 s batch, event loop lag p99 was 1.0 ms in a thread and 1.0-1.5 ms in a separate
+process. No difference, so the simpler option wins. (An earlier version of this repo used
+a process, based on single worst-case samples; those turned out to be macOS timer noise
+that shows up even when nothing of ours runs.)
 
-The semaphore caps in-flight calls. Without it, a burst of requests queues unbounded
-batches (and their text) in the executor.
+Backpressure: a semaphore caps concurrent batches (more would just fight over 6 cores and
+make every request slower), and past max_pending waiting calls we shed load instead of
+queueing text in memory. A timeout frees the request but not the thread, which is why the
+semaphore, not the timeout, is what bounds the work.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import multiprocessing as mp
 import re
 from collections.abc import Sequence
-from concurrent.futures import ProcessPoolExecutor
-from concurrent.futures.process import BrokenProcessPool
 from typing import Any, Protocol
 
 import numpy as np
@@ -36,76 +36,46 @@ class Embedder(Protocol):
     async def embed_query(self, text: str) -> Vec: ...
 
 
-_MODEL: Any = None
-
-
-def _init_worker(model: str, threads: int) -> None:
-    from fastembed import TextEmbedding
-
-    global _MODEL
-    _MODEL = TextEmbedding(model, threads=threads)
-    list(_MODEL.passage_embed(["warm up"]))
-
-
-def _passages(texts: list[str]) -> npt.NDArray[np.float32]:
-    return np.stack(list(_MODEL.passage_embed(texts, batch_size=64))).astype(np.float32)
-
-
-def _query(text: str) -> npt.NDArray[np.float32]:
-    # bge models expect a query instruction prefix; query_embed adds it.
-    return np.asarray(next(iter(_MODEL.query_embed([text]))), dtype=np.float32)
-
-
-class ProcessEmbedder:
+class FastEmbedder:
     def __init__(
-        self, model: str, *, dim: int, workers: int = 1, threads: int = 2, max_pending: int = 64
+        self, model: str, *, dim: int, concurrency: int = 2, threads: int = 2,
+        max_pending: int = 64,
     ) -> None:
+        """Loads the model (~6 s). Call via asyncio.to_thread at startup."""
+        from fastembed import TextEmbedding
+
         self.dim = dim
-        self._args = (model, threads)
-        self._workers = workers
-        self._pool = self._make()
+        self._model: Any = TextEmbedding(model, threads=threads)
+        list(self._model.passage_embed(["warm up"]))
+        self._sem = asyncio.Semaphore(concurrency)
         self._max_pending = max_pending
         self._pending = 0
 
-    def _make(self) -> ProcessPoolExecutor:
-        return ProcessPoolExecutor(
-            max_workers=self._workers,
-            mp_context=mp.get_context("spawn"),
-            initializer=_init_worker,
-            initargs=self._args,
-        )
-
-    async def start(self) -> None:
-        await asyncio.get_running_loop().run_in_executor(self._pool, _query, "warm")
-
-    def close(self) -> None:
-        self._pool.shutdown(wait=False, cancel_futures=True)
-
-    async def _run(self, fn: Any, arg: Any, timeout_s: float) -> Any:
+    async def _run(self, fn: Any, timeout_s: float) -> Any:
         if self._pending >= self._max_pending:
             raise Overloaded("embed_queue_full", retry_after_s=1.0)
         self._pending += 1
         try:
-            fut = asyncio.get_running_loop().run_in_executor(self._pool, fn, arg)
-            return await asyncio.wait_for(fut, timeout_s)
+            async with self._sem:
+                return await asyncio.wait_for(asyncio.to_thread(fn), timeout_s)
         except TimeoutError as e:
             raise Unavailable("embed_timeout") from e
-        except BrokenProcessPool as e:
-            old, self._pool = self._pool, self._make()
-            old.shutdown(wait=False, cancel_futures=True)
-            raise Unavailable("embed_worker_died") from e
         finally:
             self._pending -= 1
 
     async def embed_passages(self, texts: Sequence[str], timeout_s: float = 120.0) -> list[Vec]:
         if not texts:
             return []
-        arr = await self._run(_passages, list(texts), timeout_s)
-        return list(arr)
+        items = list(texts)
+        out = await self._run(
+            lambda: list(self._model.passage_embed(items, batch_size=64)), timeout_s
+        )
+        return [np.asarray(v, dtype=np.float32) for v in out]
 
     async def embed_query(self, text: str, timeout_s: float = 5.0) -> Vec:
-        out: Vec = await self._run(_query, text, timeout_s)
-        return out
+        # bge models expect a query instruction prefix; query_embed adds it.
+        out = await self._run(lambda: next(iter(self._model.query_embed([text]))), timeout_s)
+        return np.asarray(out, dtype=np.float32)
 
 
 _WORD = re.compile(r"\[[A-Z0-9_]+_[0-9a-f]{16}\]|[A-Za-z0-9]+")

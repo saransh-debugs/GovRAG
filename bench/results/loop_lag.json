@@ -1,0 +1,66 @@
+{
+  "idle (control)": [
+    {
+      "total_ms": 3000,
+      "p50_ms": 0.6,
+      "p99_ms": 1.0,
+      "max_ms": 1.5,
+      "samples": 541
+    },
+    {
+      "total_ms": 3000,
+      "p50_ms": 0.6,
+      "p99_ms": 2.0,
+      "max_ms": 43.6,
+      "samples": 517
+    }
+  ],
+  "embed in thread": [
+    {
+      "total_ms": 9753,
+      "p50_ms": 0.6,
+      "p99_ms": 0.9,
+      "max_ms": 72.0,
+      "samples": 1723
+    },
+    {
+      "total_ms": 9689,
+      "p50_ms": 0.6,
+      "p99_ms": 1.3,
+      "max_ms": 88.7,
+      "samples": 1703
+    }
+  ],
+  "chunk in thread": [
+    {
+      "total_ms": 1539,
+      "p50_ms": 0.8,
+      "p99_ms": 13.0,
+      "max_ms": 75.6,
+      "samples": 171
+    },
+    {
+      "total_ms": 1242,
+      "p50_ms": 0.8,
+      "p99_ms": 13.3,
+      "max_ms": 13.3,
+      "samples": 139
+    }
+  ],
+  "chunk in process": [
+    {
+      "total_ms": 1655,
+      "p50_ms": 0.6,
+      "p99_ms": 0.8,
+      "max_ms": 0.8,
+      "samples": 301
+    },
+    {
+      "total_ms": 1277,
+      "p50_ms": 0.6,
+      "p99_ms": 1.6,
+      "max_ms": 2.7,
+      "samples": 231
+    }
+  ]
+}

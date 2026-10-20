@@ -14,7 +14,7 @@ from govrag.auth import Principal
 from govrag.chunking import Chunker
 from govrag.config import Settings
 from govrag.db import Pools, scoped
-from govrag.embed import HashEmbedder, ProcessEmbedder
+from govrag.embed import FastEmbedder, HashEmbedder
 from govrag.errors import BadRequest, Forbidden, IntegrityError, Overloaded
 from govrag.ingest import DocumentIn, Ingestor, SectionIn
 from govrag.keys import EncKeys, MasterKey, TenantKeyring, rotate_master
@@ -250,37 +250,33 @@ async def test_ingest_sheds_load_when_busy(
 async def test_event_loop_stays_responsive_during_big_ingest(
     pools: Pools, keyring: TenantKeyring, analyzer: PiiAnalyzer, settings: Settings,
 ) -> None:
-    """Presidio, chunking and embeddings must all stay off the loop."""
-    embedder = ProcessEmbedder(settings.embed_model, dim=settings.embed_dim)
-    await embedder.start()
+    """Presidio, chunking and embeddings must all stay off the loop.
+
+    Measures p99 lag of a 5 ms sleep, not the single worst sample: on macOS even an idle
+    process sees rare 60-110 ms timer delays (bench/loop_lag.py). Real blocking repeats on
+    every call and shows up in p99 - LlamaIndex chunking in a thread gave p99 13-16 ms,
+    spaCy on the loop would give ~80 ms.
+    """
+    embedder = await asyncio.to_thread(FastEmbedder, settings.embed_model, dim=settings.embed_dim)
     ing = _ingestor(pools, keyring, analyzer, settings, embedder)
     sections = tuple(SectionIn(f"Section {i}. {HR_TEXT} {PUBLIC_TEXT} " * 3) for i in range(40))
+    lags: list[float] = []
+    done = asyncio.Event()
 
-    async def worst_lag(work: object) -> float:
-        worst = 0.0
-        done = asyncio.Event()
+    async def ticker() -> None:
+        while not done.is_set():
+            t = time.perf_counter()
+            await asyncio.sleep(0.005)
+            lags.append(time.perf_counter() - t - 0.005)
 
-        async def ticker() -> None:
-            nonlocal worst
-            while not done.is_set():
-                t = time.perf_counter()
-                await asyncio.sleep(0.005)
-                worst = max(worst, time.perf_counter() - t - 0.005)
-
-        tick = asyncio.create_task(ticker())
-        try:
-            await work  # type: ignore[misc]
-        finally:
-            done.set()
-            await tick
-        return worst
-
+    tick = asyncio.create_task(ticker())
     try:
-        # Baseline: how late a 5 ms sleep wakes up on this machine right now, with
-        # nothing of ours running. A busy laptop adds its own lag; we only judge ours.
-        base = await worst_lag(asyncio.sleep(2.0))
-        lag = await worst_lag(ing.ingest(INGESTER, DocumentIn("Big", ("hr",), sections)))
+        res = await ing.ingest(INGESTER, DocumentIn("Big", ("hr",), sections))
     finally:
-        embedder.close()
-    msg = f"ingest blocked the loop {lag * 1000:.0f} ms (base {base * 1000:.0f} ms)"
-    assert lag - base < 0.05, msg
+        done.set()
+        await tick
+    lags.sort()
+    p99 = lags[int(len(lags) * 0.99)]
+    assert len(res.chunk_ids) >= 40 and len(lags) > 100
+    assert p99 < 0.005, f"p99 loop lag {p99 * 1000:.1f} ms"
+    assert lags[-1] < 0.3, f"worst loop lag {lags[-1] * 1000:.0f} ms"
