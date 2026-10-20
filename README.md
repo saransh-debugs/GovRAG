@@ -245,18 +245,6 @@ eval/  bench/    measured numbers above, raw JSON in bench/results/
 tests/           unit, integration (real Postgres + Presidio), security
 ```
 
----
-
-## Trade-offs and limits
-
-- **RLS stops "forgot the WHERE" bugs, not arbitrary SQL injection.** Injected SQL could call `set_config` itself. The defense there is that all SQL is parameterized (asyncpg's extended protocol, no string building with user input), and the vault sits behind a separate login.
-- **Keys live in process memory.** DB login separation protects against SQL bugs, not a compromised app process. Production would put the vault behind its own service with a KMS.
-- **Deterministic tokens leak equality.** Within a tenant, the same token = the same value. That's what lets the LLM and search connect mentions. It's limited to one tenant, and hidden from users without access via aliases.
-- **PII recall isn't 100%.** See above. A miss reaches the LLM vendor as plain text.
-- **Default redaction is PII, not all sensitive content.** Locations, organizations and dates are opt-in (`extra_redact`), because they're noisy.
-- **Revocation lag:** a removed role lasts until the JWT expires (max 1 h, configurable). A removed unmask rule lasts up to 30 s if a notification is lost.
-- **Memory:** each Presidio worker holds its own spaCy model (about 700 MB). Worker count is limited by RAM, not CPU cores.
-- **Document titles:** stored redacted, but title tokens have no vault refs, so they only rehydrate if the same value also appears in a retrieved chunk.
 
 ## What's next
 
