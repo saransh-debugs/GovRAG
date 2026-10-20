@@ -91,7 +91,7 @@ class Settings(BaseSettings):
     # Policy region -> Vertex location. Data residency: an "eu" tenant never hits a US
     # endpoint.
     vertex_claude_regions: dict[str, str] = Field(default_factory=lambda: {
-        "us": "us-east5", "eu": "europe-west1",
+        "us": "us", "eu": "eu",
     })
     vertex_gemini_locations: dict[str, str] = Field(default_factory=lambda: {
         "us": "us-central1", "eu": "europe-west4",
