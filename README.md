@@ -16,6 +16,36 @@ Stack: Python 3.12, FastAPI, Postgres 17 + pgvector 0.8, Presidio + spaCy, faste
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Client + JWT] --> A["FastAPI app<br/>one asyncio loop"]
+    A -- "redact" --> PW["Presidio<br/>worker processes"]
+    A -- "embed" --> EM["fastembed, local<br/>capped threads"]
+    A -- "placeholders only" --> LLM["Gemini on Vertex<br/>untrusted, no tools"]
+    LLM --> RH["rehydrate<br/>allowlist + aliases"]
+    RH --> OUT[Streamed answer]
+    subgraph PG["Postgres 17 + pgvector, RLS on every table"]
+        direction TB
+        D[("chunks + vectors<br/>audit log, policies")]
+        V[("vault<br/>encrypted PII")]
+    end
+    A -- "govrag_app, govrag_ingest" --> D
+    A -- "govrag_vault" --> V
+    D -. "NOTIFY on policy edit" .-> A
+```
+
+| DB login | Used for | Can't |
+|---|---|---|
+| `govrag_app` | search, audit, policies | read the vault |
+| `govrag_ingest` | store chunks, write vault rows | read vault ciphertext |
+| `govrag_vault` | decrypt allowed PII types | read documents |
+
+- **Three DB logins, three pools.** The query login can't read the vault. Postgres enforces it, not the app.
+- **Slow CPU work never runs on the event loop.** Presidio runs in its own processes. Embedding runs in threads with a cap.
+- **The LLM sits outside the trust line.** It gets placeholders in and its output goes through the same allowlist.
+
 ## How a question flows
 
 ```
