@@ -349,3 +349,22 @@ async def test_randomized_retrieval_isolation(
     assert checked > 500
     async with scoped(world.svc.pools.app, world.t, ["a"], acquire_timeout_s=1) as c:
         assert await c.fetchval("SELECT 1") == 1
+
+
+async def test_title_pii_rehydrates_only_for_allowed_roles(world: World) -> None:
+    # A name that appears nowhere else, so no other retrieved chunk can carry its ref.
+    name = "Tomasz Wieczorek"
+    res = await world.svc.ingestor.ingest(
+        Principal(world.t, "svc", frozenset({"ingest"})),
+        DocumentIn(f"Onboarding plan for {name}", ("hr", "intern"),
+                   (SectionIn("Week one covers laptop setup and the security training."),)),
+    )
+
+    def title(ans: object) -> str:
+        return next(c.title for c in ans.meta.citations  # type: ignore[attr-defined]
+                    if c.document_id == res.document_id)
+
+    hr = await world.svc.query.answer(world.who("hr"), "onboarding laptop setup week one")
+    intern = await world.svc.query.answer(world.who("intern"), "onboarding laptop setup week one")
+    assert title(hr) == f"Onboarding plan for {name}"
+    assert title(intern) == "Onboarding plan for [PERSON 1]"

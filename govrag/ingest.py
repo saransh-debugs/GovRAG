@@ -185,8 +185,12 @@ class Ingestor:
 
         refs: list[tuple[str, uuid.UUID]] = []
         chunk_types: list[list[str]] = []
+        # The title appears in citations for anyone who can read *any* chunk of the
+        # document, so its tokens are ref'd from every chunk. Without this, a name in a
+        # title could never be rehydrated, even for a user allowed to see it.
+        title_toks = set(find_tokens(prep.title)) & found.keys()
         for cid, _, text, _ in rows:
-            toks = set(find_tokens(text))
+            toks = set(find_tokens(text)) | title_toks
             # Only tokens we minted count. Text that merely looks like a token (e.g. the
             # document itself contains "[PERSON_0123456789abcdef]") gets no vault ref.
             toks &= found.keys()
