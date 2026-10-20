@@ -37,6 +37,13 @@ T = TypeVar("T")
 _ENGINE: Any = None
 # Area 000/666/9xx, group 00 and serial 0000 are never issued, so they're not SSNs.
 SSN_DASHED = r"\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b"
+# 3-3-4 digits. Presidio's phone recognizer validates area codes, so "276-018-9555" is
+# "not a phone" and passes through raw. For data protection, phone-shaped is enough.
+PHONE_SHAPED = r"(?<![\w-])(?:\(\d{3}\)\s?|\d{3}[-.\s])\d{3}[-.\s]\d{4}(?![\w-])"
+# spaCy reliably misses titled names in some contexts ("Contact Dr. Brett Robinson today"),
+# measured in eval/pii_recall.py. A title plus capitalized words is a name.
+TITLED_NAME = (r"\b(?:Dr|Mr|Mrs|Ms|Mx|Prof)\.?\s+[A-Z][a-z'\-]+"
+               r"(?:\s+[A-Z][a-z'\-]+){0,2}\b")
 
 
 def _init_worker(model: str) -> None:
@@ -66,6 +73,14 @@ def _init_worker(model: str) -> None:
             patterns=[Pattern("ssn_dashed", SSN_DASHED, 0.9)],
         )
     )
+    _ENGINE.registry.add_recognizer(PatternRecognizer(
+        supported_entity="PHONE_NUMBER", name="PhoneShapeRecognizer",
+        patterns=[Pattern("phone_shaped", PHONE_SHAPED, 0.5)],
+    ))
+    _ENGINE.registry.add_recognizer(PatternRecognizer(
+        supported_entity="PERSON", name="TitledNameRecognizer",
+        patterns=[Pattern("titled_name", TITLED_NAME, 0.7)],
+    ))
     _ENGINE.analyze("warm up John Smith", language="en")
 
 

@@ -1,0 +1,76 @@
+{
+  "docs": 150,
+  "sections": 456,
+  "analyze_seconds": 6.4,
+  "presidio_only": {
+    "CREDIT_CARD": {
+      "n": 121,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "EMAIL_ADDRESS": {
+      "n": 132,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "PERSON": {
+      "n": 812,
+      "hidden_recall": 0.9865,
+      "typed_recall": 0.9865
+    },
+    "PHONE_NUMBER": {
+      "n": 139,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "US_SSN": {
+      "n": 149,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "ALL": {
+      "n": 1353,
+      "hidden_recall": 0.9919,
+      "typed_recall": 0.9919,
+      "precision": 0.9753
+    }
+  },
+  "with_propagation": {
+    "CREDIT_CARD": {
+      "n": 121,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "EMAIL_ADDRESS": {
+      "n": 132,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "PERSON": {
+      "n": 812,
+      "hidden_recall": 0.9963,
+      "typed_recall": 0.9963
+    },
+    "PHONE_NUMBER": {
+      "n": 139,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "US_SSN": {
+      "n": 149,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "ALL": {
+      "n": 1353,
+      "hidden_recall": 0.9978,
+      "typed_recall": 0.9978,
+      "precision": 0.965
+    }
+  },
+  "sample_misses_with_propagation": [
+    "PERSON: ...igration is on schedule. Juan Wood joined the platform team...",
+    "PERSON: ...rch. Phone: 960-376-7249 Juan Wood approved the budget for ...",
+    "PERSON: ...today about the offsite. Juan Wood joined the platform team..."
+  ]
+}
