@@ -1,77 +1,112 @@
 {
   "docs": 150,
-  "sections": 442,
-  "analyze_seconds": 8.7,
+  "sections": 466,
+  "analyze_seconds": 9.8,
   "presidio_only": {
     "CREDIT_CARD": {
-      "n": 121,
+      "n": 128,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "EMAIL_ADDRESS": {
-      "n": 146,
+      "n": 133,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "PERSON": {
-      "n": 769,
-      "hidden_recall": 0.9922,
-      "typed_recall": 0.9922
+      "n": 838,
+      "hidden_recall": 0.9905,
+      "typed_recall": 0.9905
     },
     "PHONE_NUMBER": {
-      "n": 136,
+      "n": 142,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "US_SSN": {
-      "n": 132,
+      "n": 149,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "ALL": {
-      "n": 1304,
-      "hidden_recall": 0.9954,
-      "typed_recall": 0.9954,
-      "precision": 0.9803
+      "n": 1390,
+      "hidden_recall": 0.9942,
+      "typed_recall": 0.9942,
+      "precision": 0.9808
     }
   },
   "with_propagation": {
     "CREDIT_CARD": {
-      "n": 121,
+      "n": 128,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "EMAIL_ADDRESS": {
-      "n": 146,
+      "n": 133,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "PERSON": {
-      "n": 769,
-      "hidden_recall": 0.9948,
-      "typed_recall": 0.9948
+      "n": 838,
+      "hidden_recall": 0.9916,
+      "typed_recall": 0.9916
     },
     "PHONE_NUMBER": {
-      "n": 136,
+      "n": 142,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "US_SSN": {
-      "n": 132,
+      "n": 149,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "ALL": {
-      "n": 1304,
-      "hidden_recall": 0.9969,
-      "typed_recall": 0.9969,
-      "precision": 0.9679
+      "n": 1390,
+      "hidden_recall": 0.995,
+      "typed_recall": 0.995,
+      "precision": 0.9664
     }
   },
-  "sample_misses_with_propagation": [
-    "PERSON: ...Owner: Chase Arellano (finance) Reach them at ...",
-    "PERSON: ...mple.org for follow-ups. Stephanie French approved the budget for ...",
-    "PERSON: ...igration is on schedule. Bradley Morris joined the platform team...",
-    "PERSON: ...igration is on schedule. Shelby Hart joined the platform team..."
+  "with_cross_document": {
+    "CREDIT_CARD": {
+      "n": 128,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "EMAIL_ADDRESS": {
+      "n": 133,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "PERSON": {
+      "n": 838,
+      "hidden_recall": 0.9928,
+      "typed_recall": 0.9928
+    },
+    "PHONE_NUMBER": {
+      "n": 142,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "US_SSN": {
+      "n": 149,
+      "hidden_recall": 1.0,
+      "typed_recall": 1.0
+    },
+    "ALL": {
+      "n": 1390,
+      "hidden_recall": 0.9957,
+      "typed_recall": 0.9957,
+      "precision": 0.9664
+    }
+  },
+  "sample_misses_with_cross_document": [
+    "PERSON: ...Acme: Summer Hood gets a raise. Phone: 048...",
+    "PERSON: ...7626 was charged. Owner: Summer Hood (finance) According to S...",
+    "PERSON: ...d (finance) According to Summer Hood, the migration is on sch...",
+    "PERSON: ...igration is on schedule. Summer Hood approved the budget for ...",
+    "PERSON: ...From: Shelby Hart Card ending in full numb...",
+    "PERSON: ...the next quarter. Thanks Christian Smith! Acme: Christian Smith g..."
   ]
 }

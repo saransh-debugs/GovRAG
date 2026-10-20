@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import uuid
 
@@ -17,7 +18,7 @@ from govrag.db import Pools, scoped
 from govrag.embed import FastEmbedder, HashEmbedder
 from govrag.errors import BadRequest, Forbidden, IntegrityError, Overloaded
 from govrag.ingest import DocumentIn, Ingestor, SectionIn
-from govrag.keys import EncKeys, MasterKey, TenantKeyring, rotate_master
+from govrag.keys import EncKeys, MasterKey, TenantKeyring, provision_tenant, rotate_master
 from govrag.pii import vault
 from govrag.pii.analyzer import PiiAnalyzer
 from govrag.pii.redact import Found
@@ -157,6 +158,31 @@ async def test_name_found_once_is_hidden_everywhere_in_doc(
     )
     text = " ".join(r["text_redacted"] for r in rows)
     assert "Priyanka" not in text and "Raghunathan" not in text
+
+
+async def test_name_seen_in_another_document_is_hidden(
+    pools: Pools, keyring: TenantKeyring, analyzer: PiiAnalyzer, settings: Settings,
+    owner: asyncpg.Connection, master: MasterKey,
+) -> None:
+    # Fresh tenant: the name must be unknown until document A introduces it.
+    t = f"x-{os.urandom(3).hex()}"
+    await provision_tenant(owner, master, t)
+    svc = Principal(t, "svc", frozenset({"ingest"}))
+    ing = _ingestor(pools, keyring, analyzer, settings)
+    # spaCy tags "Juan Wood" as an ORG in this sentence, so on its own it leaks.
+    missed = "Juan Wood joined the platform team in March."
+    b0 = await ing.ingest(svc, DocumentIn("B0", ("hr",), (SectionIn(missed),)))
+    # Document A: a context where spaCy does see a person. Now the tenant knows the name.
+    await ing.ingest(svc, DocumentIn("A", ("hr",), (SectionIn("We met Juan Wood yesterday."),)))
+    b1 = await ing.ingest(svc, DocumentIn("B1", ("hr",), (SectionIn(missed),)))
+
+    async def stored(doc: uuid.UUID) -> str:
+        return " ".join(r["text_redacted"] for r in await owner.fetch(
+            "SELECT text_redacted FROM core.chunks WHERE document_id = $1", doc))
+
+    assert "Juan Wood" in await stored(b0.document_id)  # the gap this fix closes
+    assert "Juan Wood" not in await stored(b1.document_id)
+    assert b1.pii_counts.get("PERSON") == 1
 
 
 async def test_label_colon_name_is_found(

@@ -20,10 +20,12 @@ from pathlib import Path
 
 from eval.synth_corpus import Doc, Span, build
 from govrag.config import get_settings
-from govrag.pii.analyzer import PiiAnalyzer
+from govrag.ingest_cpu import name_candidates
+from govrag.pii.analyzer import PiiAnalyzer, resolve_overlaps
 from govrag.pii.analyzer import Span as Pred
 from govrag.pii.entities import DEFAULT_REDACT
 from govrag.pii.redact import propagate
+from govrag.pii.tokens import token_for
 
 
 def score(docs: list[Doc], preds: list[list[list[Pred]]]) -> dict[str, dict[str, float]]:
@@ -52,6 +54,28 @@ def score(docs: list[Doc], preds: list[list[list[Pred]]]) -> dict[str, dict[str,
     return out
 
 
+def cross_document(docs: list[Doc], raw: list[list[list[Pred]]]) -> list[list[list[Pred]]]:
+    """Replay documents in order, like ingest does against the tenant vault: names
+    detected in earlier documents are looked up (by HMAC token) in later ones."""
+    key = b"k" * 32
+    known: set[str] = set()
+    out: list[list[list[Pred]]] = []
+    for d, spans in zip(docs, raw, strict=True):
+        cands = name_candidates(d.sections, spans, key)
+        extra = [list(sp) for sp in spans]
+        for tok, places in cands.items():
+            if tok in known:
+                for i, a, b in places:
+                    extra[i].append((a, b, "PERSON", 0.9))
+        final = propagate(d.sections, [resolve_overlaps(x) for x in extra])
+        for text, sp in zip(d.sections, final, strict=True):
+            for a, b, t, _ in sp:
+                if t == "PERSON" and len(text[a:b].split()) >= 2:
+                    known.add(token_for(key, "PERSON", text[a:b])[0])
+        out.append(final)
+    return out
+
+
 def _leaks(docs: list[Doc], preds: list[list[list[Pred]]], limit: int = 8) -> list[str]:
     out = []
     for doc, dpreds in zip(docs, preds, strict=True):
@@ -77,19 +101,21 @@ async def _collect() -> dict[str, object]:
     finally:
         a.close()
     prop = [propagate(d.sections, r) for d, r in zip(docs, raw, strict=True)]
+    cross = cross_document(docs, raw)
     result = {
         "docs": len(docs),
         "sections": sum(len(d.sections) for d in docs),
         "analyze_seconds": round(took, 1),
         "presidio_only": score(docs, raw),
         "with_propagation": score(docs, prop),
-        "sample_misses_with_propagation": _leaks(docs, prop),
+        "with_cross_document": score(docs, cross),
+        "sample_misses_with_cross_document": _leaks(docs, cross),
     }
-    for k in ("presidio_only", "with_propagation"):
+    for k in ("presidio_only", "with_propagation", "with_cross_document"):
         print(k)
         for t, v in result[k].items():  # type: ignore[union-attr]
             print(f"  {t:14} {v}")
-    print("sample misses:", *result["sample_misses_with_propagation"], sep="\n  ")  # type: ignore[arg-type]
+    print("sample misses:", *result["sample_misses_with_cross_document"], sep="\n  ")  # type: ignore[arg-type]
     return result
 
 

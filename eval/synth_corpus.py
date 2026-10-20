@@ -74,8 +74,12 @@ def build(n_docs: int = 150, seed: int = 7) -> list[Doc]:
     Faker.seed(seed)
     rng = random.Random(seed)
     docs: list[Doc] = []
+    # Like a real company: half the people in a document are recurring employees, half are
+    # one-offs. Recurring names are what cross-document lookup can catch.
+    staff = [fake.name() for _ in range(60)]
     for _ in range(n_docs):
-        people = [fake.name() for _ in range(rng.randint(1, 3))]
+        people = [rng.choice(staff) if rng.random() < 0.5 else fake.name()
+                  for _ in range(rng.randint(1, 3))]
         sections: list[str] = []
         gold: list[list[Span]] = []
         for _s in range(rng.randint(2, 4)):

@@ -26,10 +26,10 @@ from govrag.config import Settings
 from govrag.db import IDENT, Pools, scoped
 from govrag.embed import Embedder
 from govrag.errors import BadRequest, Forbidden, NotFound, Overloaded, Unavailable
-from govrag.ingest_cpu import prepare_document
+from govrag.ingest_cpu import name_candidates, prepare_document
 from govrag.keys import MasterKey, TenantKeyring
 from govrag.pii import vault
-from govrag.pii.analyzer import PiiAnalyzer
+from govrag.pii.analyzer import PiiAnalyzer, Span, resolve_overlaps
 from govrag.pii.entities import DEFAULT_REDACT
 from govrag.pii.tokens import entity_type_of, find_tokens, neutralize
 from govrag.tracing import annotate, step, tracer
@@ -41,6 +41,9 @@ MAX_TITLE_CHARS = 500
 MAX_SECTIONS = 1000
 MAX_ROLES = 32
 _FK_RETRIES = 3
+# Above Presidio's ORG score (0.85 for spaCy NER): an exact match on a name the tenant has
+# already seen as a PERSON beats "this looks like a company".
+KNOWN_NAME_SCORE = 0.9
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +169,10 @@ class Ingestor:
         with step("pii.analyze", lane="ingest"):
             spans = await self._analyzer.analyze(texts, DEFAULT_REDACT | extra_redact,
                                                  lane="ingest")
+        with step("pii.known_names") as sp:
+            before = sum(len(x) for x in spans)
+            spans = await self._add_known_names(tenant, texts, spans, hmac_key)
+            annotate(sp, hits=sum(len(x) for x in spans) - before)
         # Propagate + redact + chunk in a worker process, not a thread: see ingest_cpu.py.
         with step("redact_and_chunk"):
             prep = await self._analyzer.run(
@@ -247,6 +254,28 @@ class Ingestor:
                     raise Unavailable("ingest_conflict") from None
         counts = Counter(f.entity_type for f in found.values())
         return IngestResult(doc_id, tuple(r[0] for r in rows), dict(counts), new_tokens)
+
+    async def _add_known_names(
+        self, tenant: str, texts: list[str], spans: list[list[Span]], hmac_key: bytes
+    ) -> list[list[Span]]:
+        """Add spans for names this tenant's vault already knows (see name_candidates)."""
+        cands = await self._analyzer.run("ingest", name_candidates, texts, spans, hmac_key,
+                                         timeout_s=60.0)
+        if not cands:
+            return spans
+        async with scoped(
+            self._pools.ingest, tenant, acquire_timeout_s=self._pools.acquire_timeout_s
+        ) as c:
+            rows = await c.fetch(
+                "SELECT token FROM vault.pii_tokens WHERE tenant_id = $1"
+                " AND entity_type = 'PERSON' AND token = ANY($2)",
+                tenant, list(cands),
+            )
+        out = [list(sp) for sp in spans]
+        for r in rows:
+            for i, a, b in cands[r["token"]]:
+                out[i].append((a, b, "PERSON", KNOWN_NAME_SCORE))
+        return [resolve_overlaps(sp) for sp in out]
 
     async def delete(
         self, p: Principal, document_id: uuid.UUID, *, request_id: uuid.UUID | None = None

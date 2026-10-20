@@ -72,26 +72,27 @@ Hardware: Intel i7-9750H (6 cores), 16 GB, macOS. Postgres in Docker. Raw result
 
 ### PII detection: `eval/pii_recall.py`
 
-150 synthetic documents, 1,304 labeled values, names in easy and hard sentences.
+150 synthetic documents, 1,390 labeled values. Names appear in easy and hard sentences, half of them are recurring "staff" who show up across documents, and some sit behind labels like `From:`.
 
-| Type | Hidden recall |
-|---|---|
-| SSN, email, credit card, phone | 100% |
-| Names | 99.5% |
-| **All** | **99.7%** |
-| Precision | 96.8% |
+| Type | Presidio alone | + same-document sharing | + cross-document lookup |
+|---|---|---|---|
+| SSN, email, credit card, phone | 100% | 100% | 100% |
+| Names | 99.05% | 99.16% | **99.28%** |
+| **All** | 99.42% | 99.50% | **99.57%** |
+| Precision | 98.1% | 96.6% | 96.6% |
 
 What raised it, each found by this eval or the live demo:
 
 | Fix | Problem it fixed |
 |---|---|
 | Hide every copy of a found value in the same document | spaCy's name detection depends on the surrounding words |
+| Cross-document lookup: HMAC each 2–3 capitalized-word group, check the tenant's vault | A name found in one document but missed in another ("Juan Wood joined…" is tagged as a company). Also completes partial hits ("Jackson" found, "Joel" left visible). No plaintext name list exists anywhere. |
 | Dashed SSN pattern, scored above phones | Presidio drops "known fake" SSNs, and the phone finder then claimed them as phones |
 | Phone-shaped pattern | Presidio rejects unassigned area codes, so they went through raw (phones were 88.5%) |
 | Title + name pattern | "Dr. Brett Robinson" was missed in every mention |
 | Second scan with `": "` → `". "` (same length) | "Globex: Priyanka Raghunathan …" had no name found (A/B: name misses 7 → 4) |
 
-**Limit:** this is a synthetic corpus. Real documents will do worse. About 1 in 320 values still gets through. A missed value reaches the LLM vendor as plain text. That's why the vendor runs in the tenant's region and gets only the top-k chunks.
+What's left: names spaCy never recognizes in any document, and the first mention of a name before the tenant has seen it anywhere.
 
 ### Real-model token copying: `eval/token_fidelity.py`
 
@@ -249,7 +250,6 @@ tests/           unit, integration (real Postgres + Presidio), security
 ## What's next
 
 - Batch embeddings across documents (ingest is embedding-bound).
-- Cross-document known-PII lookup: HMAC each capitalized n-gram and check it against the tenant's vault. That catches a name missed here but found in another document, without storing plaintext.
 - Vault as its own service with KMS-backed keys.
 - WORM export of the audit log (e.g. object lock).
 - Cedar or OPA if policies outgrow "role → PII types".

@@ -9,6 +9,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from govrag.chunking import Chunker
+from govrag.ingest_cpu import name_candidates
 from govrag.pii.analyzer import resolve_overlaps
 from govrag.pii.redact import propagate, redact, redact_question
 from govrag.pii.tokens import (
@@ -118,3 +119,15 @@ def test_propagate_ignores_short_values() -> None:
     texts = ["Al met Bo.", "Al is here."]
     out = propagate(texts, [[(0, 2, "PERSON", 0.9)], []])
     assert out[1] == []
+
+
+def test_name_candidates_extend_partial_spans_but_not_cut_them() -> None:
+    text = "Phone: 785-277-4932 Joel Jackson joined Acme Corp today."
+    partial = [(25, 32, "PERSON", 0.85)]  # spaCy found only "Jackson"
+    cands = name_candidates([text], [partial], K1)
+    found = {text[a:b] for places in cands.values() for _, a, b in places}
+    assert "Joel Jackson" in found            # contains the partial span: kept
+    assert token_for(K1, "PERSON", "Joel Jackson")[0] in cands
+    cut = name_candidates([text], [[(25, 39, "PERSON", 0.85)]], K1)  # "Jackson joined"
+    assert not any(text[a:b] == "Joel Jackson" for p in cut.values() for _, a, b in p)
+    assert "Acme Corp" in {text[a:b] for p in cands.values() for _, a, b in p}

@@ -8,14 +8,18 @@ redaction and chunking run there too. The web process only does I/O.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from govrag.pii.analyzer import Span
 from govrag.pii.redact import Found, propagate, redact
-from govrag.pii.tokens import TOKEN_RE
+from govrag.pii.tokens import TOKEN_RE, token_for
 
 _CHUNKER: Any = None
+# A run of capitalized words. Sub-sequences of 2-3 words are name candidates.
+_CAP_RUN = re.compile(r"\b[A-Z][a-z'\-]+(?:\s+[A-Z][a-z'\-]+)+\b")
+_WORD = re.compile(r"[A-Z][a-z'\-]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,3 +74,39 @@ def rescan_redact(
     for r in red:
         found.update(r.found)
     return [r.text for r in red], found
+
+
+Candidate = tuple[int, int, int]  # text index, start, end
+
+
+def name_candidates(
+    texts: list[str], spans: list[list[Span]], hmac_key: bytes
+) -> dict[str, list[Candidate]]:
+    """Possible names Presidio didn't flag, keyed by the PERSON token they would get.
+
+    Ingest looks these tokens up in the tenant's vault. A hit means this exact name was
+    detected in an earlier document, so it's hidden here too, even where spaCy misses it
+    ("Juan Wood joined the team" is tagged as an ORG). Only the HMAC is compared: no
+    plaintext list of names exists anywhere.
+
+    Only 2-3 word sequences count. Single capitalized words ("Will", "Grant", "March")
+    would hide ordinary words across the whole tenant.
+    Tokens are never inside a candidate: the token regex needs "[" and "_", which a run of
+    capitalized words can't contain.
+    """
+    out: dict[str, list[Candidate]] = {}
+    for i, (text, sp) in enumerate(zip(texts, spans, strict=True)):
+        taken = [(a, b) for a, b, _, _ in sp] + [m.span() for m in TOKEN_RE.finditer(text)]
+        for run in _CAP_RUN.finditer(text):
+            words = list(_WORD.finditer(text, run.start(), run.end()))
+            for n in (3, 2):
+                for j in range(len(words) - n + 1):
+                    a, b = words[j].start(), words[j + n - 1].end()
+                    # Skip if it cuts through an existing span. But a candidate that fully
+                    # *contains* one is kept: spaCy often finds only "Jackson" in "Joel
+                    # Jackson", which would leave "Joel" in plain text.
+                    if any(a < y and b > x and not (a <= x and y <= b) for x, y in taken):
+                        continue
+                    out.setdefault(token_for(hmac_key, "PERSON", text[a:b])[0], []).append(
+                        (i, a, b))
+    return out
