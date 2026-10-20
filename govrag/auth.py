@@ -27,6 +27,7 @@ class Principal:
     tenant_id: str
     user_id: str
     roles: frozenset[str]
+    issued_at: float = 0.0  # JWT iat; revocations reject tokens issued before a cut-off
 
     def has(self, role: str) -> bool:
         return role in self.roles
@@ -93,7 +94,7 @@ class JwtVerifier:
             or not all(isinstance(r, str) and IDENT.match(r) for r in roles)
         ):
             raise Unauthorized("bad_roles")
-        return Principal(tenant_id=tid, user_id=sub, roles=frozenset(roles))
+        return Principal(tenant_id=tid, user_id=sub, roles=frozenset(roles), issued_at=float(iat))
 
 
 def mint(

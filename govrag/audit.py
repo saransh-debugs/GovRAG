@@ -17,7 +17,7 @@ from opentelemetry import trace
 
 Action = Literal[
     "retrieve", "rehydrate", "ingest", "delete", "denied",
-    "policy_change", "policy_rollback", "rescan", "shred", "dry_run",
+    "policy_change", "policy_rollback", "rescan", "shred", "dry_run", "revoke",
 ]
 Outcome = Literal["ok", "denied", "error"]
 

@@ -16,8 +16,6 @@ policy past its TTL, and never fall back to "no policy = allow".
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import logging
 import time
 from dataclasses import dataclass
 
@@ -25,10 +23,10 @@ import asyncpg
 
 from govrag.db import Pools, scoped
 from govrag.errors import GovRagError, Unavailable
+from govrag.notify import Listener
 from govrag.policy.model import ActivePolicy
 from govrag.policy.store import read_active
 
-log = logging.getLogger(__name__)
 CHANNEL = "policy_changed"
 
 
@@ -39,18 +37,25 @@ class _Entry:
 
 
 class PolicyCache:
-    def __init__(self, pools: Pools, listen_dsn: str, *, ttl_s: float = 30.0) -> None:
+    def __init__(self, pools: Pools, listener: Listener | str, *, ttl_s: float = 30.0) -> None:
+        """listener: a shared Listener, or a DSN to own a private one (tests)."""
         self._pools = pools
-        self._dsn = listen_dsn
+        self._own = isinstance(listener, str)
+        self._listener = Listener(listener) if isinstance(listener, str) else listener
+        self._listener.subscribe(CHANNEL, self._on_notify, on_connect=self._on_connect)
         self._ttl = ttl_s
         self._entries: dict[str, _Entry] = {}
         # Single-flight: 500 requests missing the same tenant at once -> 1 DB read, not 500.
         self._inflight: dict[str, asyncio.Future[ActivePolicy]] = {}
-        self._listener: asyncpg.Connection | None = None
-        self._task: asyncio.Task[None] | None = None
-        self._stopping = False
-        self.listening = asyncio.Event()
         self.stats = {"hits": 0, "misses": 0, "notifies": 0, "reconnects": 0}
+
+    @property
+    def listening(self) -> asyncio.Event:
+        return self._listener.listening
+
+    @property
+    def connection(self) -> asyncpg.Connection | None:
+        return self._listener.connection
 
     # --- reads -------------------------------------------------------------------------
 
@@ -96,58 +101,21 @@ class PolicyCache:
         else:
             self._entries.pop(tenant_id, None)
 
-    # --- listener ------------------------------------------------------------------------
+    # --- push invalidation -------------------------------------------------------------
 
     async def start(self) -> None:
-        self._task = asyncio.create_task(self._listen_forever(), name="policy-listener")
+        if self._own:
+            await self._listener.start()
 
     async def stop(self) -> None:
-        self._stopping = True
-        if self._task:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-        if self._listener and not self._listener.is_closed():
-            await self._listener.close()
+        if self._own:
+            await self._listener.stop()
 
     def _on_notify(self, _conn: object, _pid: int, _channel: str, payload: str) -> None:
         self.stats["notifies"] += 1
         self.invalidate(payload)
 
-    async def _listen_forever(self) -> None:
-        backoff = 0.2
-        while not self._stopping:
-            lost = asyncio.Event()
-            try:
-                # A dedicated connection, not a pooled one: LISTEN state lives on the
-                # session, and a pooled connection would drop it on release.
-                conn = await asyncpg.connect(self._dsn, timeout=5)
-                conn.add_termination_listener(lambda _c, ev=lost: ev.set())
-                await conn.add_listener(CHANNEL, self._on_notify)
-                self._listener = conn
-                # Anything sent while we were disconnected is lost; start clean.
-                self.invalidate()
-                self.listening.set()
-                backoff = 0.2
-                # A silent network drop never fires the termination listener. Ping, so a
-                # dead listener is noticed in ~10 s instead of never.
-                while not lost.is_set():
-                    try:
-                        await asyncio.wait_for(lost.wait(), timeout=10.0)
-                    except TimeoutError:
-                        try:
-                            await conn.fetchval("SELECT 1", timeout=3.0)
-                        except (OSError, asyncpg.PostgresError, TimeoutError,
-                                asyncpg.InterfaceError):
-                            break
-                if not conn.is_closed():
-                    conn.terminate()
-            except asyncio.CancelledError:
-                raise
-            except (OSError, asyncpg.PostgresError, TimeoutError) as e:
-                log.warning("policy listener connect failed: %s", type(e).__name__)
-            finally:
-                self.listening.clear()
-            self.stats["reconnects"] += 1
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 10.0)
+    def _on_connect(self) -> None:
+        # Anything sent while we were disconnected is lost; start clean.
+        self.invalidate()
+        self.stats["reconnects"] = self._listener.connects - 1

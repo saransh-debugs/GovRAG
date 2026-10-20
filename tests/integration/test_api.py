@@ -154,3 +154,16 @@ async def test_admin_policy_endpoints(
     assert (await c.get("/v1/admin/policy/versions", headers=admin)).json()["versions"][0] == {
         "version": 1, "created_by": "u1"}
     assert (await c.post("/v1/admin/shred", headers=admin)).status_code == 403
+
+
+async def test_revoked_token_gets_401(
+    env: tuple[httpx.AsyncClient, str, object], jwtkit: JwtKit
+) -> None:
+    c, t, _ = env
+    victim = auth(jwtkit, t, "intern")  # minted before the revocation
+    assert (await c.post("/v1/query", headers=victim, json={"question": "hi"})).status_code == 200
+    r = await c.post("/v1/admin/revoke", headers=auth(jwtkit, t, "policy_admin"),
+                     json={"user_id": "u1"})
+    assert r.status_code == 200
+    r = await c.post("/v1/query", headers=victim, json={"question": "hi"})
+    assert r.status_code == 401 and r.json() == {"error": "token_revoked"}

@@ -25,12 +25,14 @@ from govrag.ingest import Ingestor
 from govrag.keys import MasterKey, TenantKeyring
 from govrag.limits import Admission
 from govrag.llm import FakeLLM, LlmRouter, ModelFactory, vertex_factory
+from govrag.notify import Listener
 from govrag.pii.analyzer import PiiAnalyzer
 from govrag.policy.cache import PolicyCache
 from govrag.policy.rescan import Rescanner
 from govrag.policy.store import PolicyStore
 from govrag.query import QueryService
 from govrag.retrieval import Retriever
+from govrag.revocations import Revocations
 
 log = logging.getLogger("govrag")
 
@@ -49,6 +51,7 @@ class Services:
     query: QueryService
     verifier: JwtVerifier
     rescanner: Rescanner | None
+    revocations: Revocations
     _closers: list[Callable[[], Awaitable[None] | None]]
 
     async def close(self) -> None:
@@ -100,10 +103,13 @@ async def build_services(
         stall_timeout_s=s.llm_stall_timeout_s,
         breaker_failures=s.breaker_failures, breaker_cooldown_s=s.breaker_cooldown_s,
     )
-    policies = PolicyCache(pools, s.dsn("govrag_app", s.db_app_password),
-                           ttl_s=s.policy_cache_ttl_s)
-    await policies.start()
-    closers.append(policies.stop)
+    # One LISTEN connection for every push-invalidated cache.
+    listener = Listener(s.dsn("govrag_app", s.db_app_password))
+    policies = PolicyCache(pools, listener, ttl_s=s.policy_cache_ttl_s)
+    revocations = Revocations(pools, listener, max_token_age_s=s.jwt_max_lifetime_s,
+                              ttl_s=s.policy_cache_ttl_s)
+    await listener.start()
+    closers.append(listener.stop)
     rescanner = None
     if background:
         rescanner = Rescanner(pools=pools, keyring=keyring, analyzer=analyzer, embedder=embedder)
@@ -128,6 +134,7 @@ async def build_services(
             leeway_s=s.jwt_leeway_s, max_lifetime_s=s.jwt_max_lifetime_s,
         ),
         rescanner=rescanner,
+        revocations=revocations,
         _closers=closers,
     )
 
@@ -242,11 +249,14 @@ def services(request: Request) -> Services:
     return svc
 
 
-def principal(request: Request) -> Principal:
+async def principal(request: Request) -> Principal:
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise Unauthorized("missing_token")
-    return services(request).verifier.verify(token.strip())
+    svc = services(request)
+    p = svc.verifier.verify(token.strip())
+    await svc.revocations.check(p)
+    return p
 
 
 def request_id(request: Request) -> uuid.UUID:

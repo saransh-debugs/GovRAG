@@ -105,3 +105,17 @@ async def shred(request: Request, p: Annotated[Principal, Depends(principal)]) -
     svc = services(request)
     n = await svc.ingestor.shred_tenant_pii(p, svc.master, request_id=request_id(request))
     return {"erased_tokens": n}
+
+
+class RevokeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    user_id: str = Field(min_length=1, max_length=128)
+
+
+@router.post("/revoke")
+async def revoke(
+    body: RevokeBody, request: Request, p: Annotated[Principal, Depends(principal)]
+) -> dict[str, Any]:
+    """Reject every token for this user issued before now. They must log in again."""
+    nb = await services(request).revocations.revoke(p, body.user_id)
+    return {"user_id": body.user_id, "not_before": nb}

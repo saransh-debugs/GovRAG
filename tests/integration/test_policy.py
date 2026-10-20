@@ -170,8 +170,8 @@ async def test_cache_ttl_path_when_notify_lost(
         await asyncio.wait_for(cache.listening.wait(), 5)
         assert (await cache.get(tenant)).version == 0
         # Lose the notification: unhook the callback without dropping the connection.
-        assert cache._listener is not None
-        await cache._listener.remove_listener("policy_changed", cache._on_notify)
+        assert cache.connection is not None
+        await cache.connection.remove_listener("policy_changed", cache._on_notify)
         await PolicyStore(pools).put(admin(tenant), Policy(), expected_version=0)
         assert (await cache.get(tenant)).version == 0  # stale, within TTL
 
@@ -192,12 +192,12 @@ async def test_cache_listener_reconnects_and_clears(
     try:
         await asyncio.wait_for(cache.listening.wait(), 5)
         await cache.get(tenant)
-        assert cache._listener is not None
-        pid = cache._listener.get_server_pid()
+        assert cache.connection is not None
+        pid = cache.connection.get_server_pid()
         await owner.execute("SELECT pg_terminate_backend($1)", pid)
 
         async def reconnected() -> bool:
-            lst = cache._listener
+            lst = cache.connection
             return cache.listening.is_set() and lst is not None and lst.get_server_pid() != pid
 
         await _wait_for(reconnected, 5.0)
