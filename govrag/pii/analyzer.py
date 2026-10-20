@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing as mp
+import re
 from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
@@ -35,6 +36,7 @@ Lane = Literal["ingest", "query"]
 T = TypeVar("T")
 
 _ENGINE: Any = None
+_COLON = re.compile(r":(?=\s)")
 # Area 000/666/9xx, group 00 and serial 0000 are never issued, so they're not SSNs.
 SSN_DASHED = r"\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b"
 # 3-3-4 digits. Presidio's phone recognizer validates area codes, so "276-018-9555" is
@@ -104,7 +106,13 @@ def _analyze_batch(texts: list[str], entities: list[str]) -> list[list[Span]]:
         if not t.strip():
             out.append([])
             continue
-        res = _ENGINE.analyze(t, language="en", entities=entities)
+        res = list(_ENGINE.analyze(t, language="en", entities=entities))
+        # "Label: Name" ("From: Jane Doe", "Globex: Priyanka Raghunathan gets a raise")
+        # makes spaCy miss the name entirely. Scan a second view with ": " turned into
+        # ". " - same length, so every span offset lines up with the original - and keep
+        # the union. Only text with a colon pays for the second pass.
+        if ": " in t:
+            res += _ENGINE.analyze(_COLON.sub(".", t), language="en", entities=entities)
         spans = [
             (r.start, r.end, r.entity_type, float(r.score))
             for r in res

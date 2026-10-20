@@ -32,6 +32,9 @@ HARD = [
     "cc: {p}, legal, finance",
     "the reviewer was {p} and nobody objected",
     "Thanks {p}!",
+    "From: {p}",
+    "Owner: {p} (finance)",
+    "Acme: {p} gets a raise.",
 ]
 STRUCTURED = [
     ("SSN on file: {v}.", "US_SSN", lambda f: f.ssn()),

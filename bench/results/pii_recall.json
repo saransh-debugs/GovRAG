@@ -1,7 +1,7 @@
 {
   "docs": 150,
-  "sections": 456,
-  "analyze_seconds": 6.4,
+  "sections": 442,
+  "analyze_seconds": 8.7,
   "presidio_only": {
     "CREDIT_CARD": {
       "n": 121,
@@ -9,30 +9,30 @@
       "typed_recall": 1.0
     },
     "EMAIL_ADDRESS": {
-      "n": 132,
+      "n": 146,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "PERSON": {
-      "n": 812,
-      "hidden_recall": 0.9865,
-      "typed_recall": 0.9865
+      "n": 769,
+      "hidden_recall": 0.9922,
+      "typed_recall": 0.9922
     },
     "PHONE_NUMBER": {
-      "n": 139,
+      "n": 136,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "US_SSN": {
-      "n": 149,
+      "n": 132,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "ALL": {
-      "n": 1353,
-      "hidden_recall": 0.9919,
-      "typed_recall": 0.9919,
-      "precision": 0.9753
+      "n": 1304,
+      "hidden_recall": 0.9954,
+      "typed_recall": 0.9954,
+      "precision": 0.9803
     }
   },
   "with_propagation": {
@@ -42,35 +42,36 @@
       "typed_recall": 1.0
     },
     "EMAIL_ADDRESS": {
-      "n": 132,
+      "n": 146,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "PERSON": {
-      "n": 812,
-      "hidden_recall": 0.9963,
-      "typed_recall": 0.9963
+      "n": 769,
+      "hidden_recall": 0.9948,
+      "typed_recall": 0.9948
     },
     "PHONE_NUMBER": {
-      "n": 139,
+      "n": 136,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "US_SSN": {
-      "n": 149,
+      "n": 132,
       "hidden_recall": 1.0,
       "typed_recall": 1.0
     },
     "ALL": {
-      "n": 1353,
-      "hidden_recall": 0.9978,
-      "typed_recall": 0.9978,
-      "precision": 0.965
+      "n": 1304,
+      "hidden_recall": 0.9969,
+      "typed_recall": 0.9969,
+      "precision": 0.9679
     }
   },
   "sample_misses_with_propagation": [
-    "PERSON: ...igration is on schedule. Juan Wood joined the platform team...",
-    "PERSON: ...rch. Phone: 960-376-7249 Juan Wood approved the budget for ...",
-    "PERSON: ...today about the offsite. Juan Wood joined the platform team..."
+    "PERSON: ...Owner: Chase Arellano (finance) Reach them at ...",
+    "PERSON: ...mple.org for follow-ups. Stephanie French approved the budget for ...",
+    "PERSON: ...igration is on schedule. Bradley Morris joined the platform team...",
+    "PERSON: ...igration is on schedule. Shelby Hart joined the platform team..."
   ]
 }

@@ -159,6 +159,22 @@ async def test_name_found_once_is_hidden_everywhere_in_doc(
     assert "Priyanka" not in text and "Raghunathan" not in text
 
 
+async def test_label_colon_name_is_found(
+    pools: Pools, keyring: TenantKeyring, analyzer: PiiAnalyzer, settings: Settings,
+    owner: asyncpg.Connection,
+) -> None:
+    # spaCy alone finds no name in "Label: Name ..." (found in the live demo).
+    doc = DocumentIn("Payroll", ("hr",), (
+        SectionIn("Globex: Priyanka Raghunathan gets a 30% raise."),
+        SectionIn("From: Oluwaseun Adeyemi"),
+    ))
+    res = await _ingestor(pools, keyring, analyzer, settings).ingest(INGESTER, doc)
+    text = " ".join(r["text_redacted"] for r in await owner.fetch(
+        "SELECT text_redacted FROM core.chunks WHERE document_id = $1", res.document_id))
+    assert "Raghunathan" not in text and "Adeyemi" not in text
+    assert "Globex:" in text  # offsets preserved: the label itself is untouched
+
+
 async def test_collision_fails_loudly(pools: Pools, keyring: TenantKeyring) -> None:
     tok = "PERSON_00000000deadbeef"
     async with scoped(pools.ingest, "acme", acquire_timeout_s=1) as c:
