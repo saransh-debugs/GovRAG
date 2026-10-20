@@ -144,11 +144,21 @@ class _LanePool:
             max_tasks_per_child=self.max_tasks_per_child,
         )
 
-    def rebuild(self) -> None:
-        # A worker died (e.g. OOM-killed). The executor is now permanently broken and every
-        # future submit would fail, so swap in a fresh one.
+    def rebuild(self, *, kill: bool = False) -> None:
+        """Swap in a fresh executor.
+
+        After a worker died (e.g. OOM-killed) the old executor is permanently broken.
+        After a timeout (kill=True) the old workers are still running the stuck task:
+        shutdown() never stops a running worker, so they're terminated. Python 3.12 has
+        no public API for that (3.14 adds terminate_workers()), hence _processes. Other
+        tasks running on this lane at that moment fail with a retryable 503; that's the
+        price of getting the lane back instead of waiting out a pathological input.
+        """
         old = self.executor
         self.executor = self._make()
+        if kill:
+            for proc in list(getattr(old, "_processes", {}).values()):
+                proc.terminate()
         old.shutdown(wait=False, cancel_futures=True)
 
 
@@ -205,11 +215,11 @@ class PiiAnalyzer:
         lane.pending += 1
         try:
             fut = asyncio.get_running_loop().run_in_executor(lane.executor, fn, *args)
-            # Note: timing out frees this request, not the worker. A running task in a
-            # process can't be interrupted. Input size caps (max_section_chars) bound how
-            # long any one task can run.
             return await asyncio.wait_for(fut, timeout_s)
         except TimeoutError as e:
+            # The worker is still busy with this task and would block everything queued
+            # behind it. Kill it and start fresh (~9 s spaCy reload on first use).
+            lane.rebuild(kill=True)
             raise Unavailable(f"pii_{lane.name}_timeout") from e
         except BrokenProcessPool as e:
             lane.rebuild()
